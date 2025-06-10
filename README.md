@@ -14,7 +14,7 @@ Small weekend-project that helps us:
 | folder / file        | purpose                                                                   |
 |----------------------|---------------------------------------------------------------------------|
 | `scrapes/…/*.json`   | one file per search-results page – produced by the browser helper         |
-| `browser_helper.js`  | 30-line bookmarklet you run inside Chrome Dev-Tools to create the above   |
+| `browser_scraper.js`  | 30-line bookmarklet you run inside Chrome Dev-Tools to create the above   |
 | `cmd/merge/merge.go` | turns the raw dumps into `sessions.json` (with validation & logs)         |
 | `sessions.json`      | single machine-readable truth-file (input for timeline & solver)          |
 | `timeline.html`      | open in a browser → interactive colour-coded Gantt                        |
@@ -26,7 +26,7 @@ Small weekend-project that helps us:
 
 1. open **any** result list on  
    <https://anc.apm.activecommunities.com/citymb/activity/search>
-2. paste the entire contents of **`browser_helper.js`** into the _Console_  
+2. paste the entire contents of **`browser_scraper.js`** into the _Console_  
    → clipboard now contains a fresh `[…]` JSON array
 3. save it as e.g. `scrapes/2025-08-field-trip.json`
 
