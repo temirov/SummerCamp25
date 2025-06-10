@@ -1,3 +1,4 @@
+// cmd/scrape/main.go
 package main
 
 import (
@@ -44,39 +45,39 @@ const (
 )
 
 var ageRegex = regexp.MustCompile(ageRegexPattern)
+var weekdayIndex = map[string]int{"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
 
-// Session describes a scraped activity session.
 type Session struct {
-	Title        string `json:"title"`
-	DateRange    string `json:"dateRange"`
-	DayTime      string `json:"dayTime"`
-	MinAge       *int   `json:"minAge"`
-	MaxAge       *int   `json:"maxAge"`
-	Availability string `json:"availability"`
-	PageURL      string `json:"pageUrl"`
+	Title         string   `json:"title"`
+	StartDateUnix int64    `json:"startDateUnix"`
+	EndDateUnix   int64    `json:"endDateUnix"`
+	Days          []string `json:"days"`
+	StartMinutes  int      `json:"startMinutes"`
+	EndMinutes    int      `json:"endMinutes"`
+	MinAge        *int     `json:"minAge,omitempty"`
+	MaxAge        *int     `json:"maxAge,omitempty"`
+	Availability  string   `json:"availability"`
+	PageURL       string   `json:"pageUrl"`
 }
 
 func main() {
 	csvFilePath := flag.String(flagCSVParameterName, "", flagCSVParameterUsage)
 	outputFilePath := flag.String(flagOutputParameterName, "", flagOutputParameterUsage)
 	flag.Parse()
-
 	if *csvFilePath == "" {
 		log.Fatalf("FATAL: -%s is required", flagCSVParameterName)
 	}
 	if *outputFilePath == "" {
 		log.Fatalf("FATAL: -%s is required", flagOutputParameterName)
 	}
-
-	campNames, loadError := loadCampNames(*csvFilePath)
-	if loadError != nil {
-		log.Fatalf("FATAL: loading CSV %q: %v", *csvFilePath, loadError)
+	campNames, err := loadCampNames(*csvFilePath)
+	if err != nil {
+		log.Fatalf("FATAL: loading CSV %q: %v", *csvFilePath, err)
 	}
 	if len(campNames) == 0 {
 		log.Fatalf("FATAL: no camp names found in %s", *csvFilePath)
 	}
-
-	allocatorContext, cancelAllocator := chromedp.NewExecAllocator(context.Background(),
+	allocatorCtx, cancelAllocator := chromedp.NewExecAllocator(context.Background(),
 		append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.ExecPath(chromeExecutablePath),
 			chromedp.Flag("headless", true),
@@ -84,157 +85,245 @@ func main() {
 		)...,
 	)
 	defer cancelAllocator()
-
-	browserContext, cancelBrowser := chromedp.NewContext(allocatorContext)
+	browserCtx, cancelBrowser := chromedp.NewContext(allocatorCtx)
 	defer cancelBrowser()
-
-	if startupError := chromedp.Run(browserContext); startupError != nil {
-		log.Fatalf("FATAL: starting Chrome: %v", startupError)
+	if err := chromedp.Run(browserCtx); err != nil {
+		log.Fatalf("FATAL: starting Chrome: %v", err)
 	}
-
-	var combinedSessions []Session
+	var combined []Session
 	for _, campName := range campNames {
-		escapedName := url.QueryEscape(campName)
-		navigationURL := fmt.Sprintf(baseSearchURL, escapedName)
-		log.Printf("Scraping %q → %s", campName, navigationURL)
-
-		scrapedSessions, scrapeError := scrapePage(browserContext, navigationURL)
-		if scrapeError != nil {
-			log.Printf("  → ERROR scraping %q: %v", campName, scrapeError)
+		navigateURL := fmt.Sprintf(baseSearchURL, url.QueryEscape(campName))
+		log.Printf("Scraping %q → %s", campName, navigateURL)
+		items, err := scrapePage(browserCtx, navigateURL)
+		if err != nil {
+			log.Printf("  → ERROR scraping %q: %v", campName, err)
 			continue
 		}
-		combinedSessions = append(combinedSessions, scrapedSessions...)
+		combined = append(combined, items...)
 		time.Sleep(postScrapeSleepDuration)
 	}
-
-	outputFileHandle, createError := os.Create(*outputFilePath)
-	if createError != nil {
-		log.Fatalf("FATAL: creating %s: %v", *outputFilePath, createError)
+	outFile, err := os.Create(*outputFilePath)
+	if err != nil {
+		log.Fatalf("FATAL: creating %s: %v", *outputFilePath, err)
 	}
-	defer outputFileHandle.Close()
-
-	jsonEncoder := json.NewEncoder(outputFileHandle)
-	jsonEncoder.SetEscapeHTML(false)
-	jsonEncoder.SetIndent("", "  ")
-	if encodeError := jsonEncoder.Encode(combinedSessions); encodeError != nil {
-		log.Fatalf("FATAL: writing JSON: %v", encodeError)
+	defer outFile.Close()
+	enc := json.NewEncoder(outFile)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(combined); err != nil {
+		log.Fatalf("FATAL: writing JSON: %v", err)
 	}
-
-	log.Printf("Done: wrote %d sessions to %s", len(combinedSessions), *outputFilePath)
+	log.Printf("Done: wrote %d sessions to %s", len(combined), *outputFilePath)
 }
 
-func loadCampNames(csvFilePath string) ([]string, error) {
-	fileReader, openError := os.Open(csvFilePath)
-	if openError != nil {
-		return nil, openError
+func loadCampNames(path string) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
 	}
-	defer fileReader.Close()
-
-	csvReader := csv.NewReader(fileReader)
-	headerColumns, readHeaderError := csvReader.Read()
-	if readHeaderError != nil {
-		return nil, readHeaderError
+	defer f.Close()
+	r := csv.NewReader(f)
+	header, err := r.Read()
+	if err != nil {
+		return nil, err
 	}
-
-	campColumnIndex := -1
-	for columnIndex, columnName := range headerColumns {
-		if columnName == "Camp" {
-			campColumnIndex = columnIndex
+	idx := -1
+	for i, n := range header {
+		if n == "Camp" {
+			idx = i
 			break
 		}
 	}
-	if campColumnIndex < 0 {
-		return nil, fmt.Errorf("no 'Camp' column in header: %v", headerColumns)
+	if idx < 0 {
+		return nil, fmt.Errorf("no 'Camp' column in header")
 	}
-
-	var campNames []string
+	var names []string
 	for {
-		csvRecord, recordError := csvReader.Read()
-		if recordError != nil {
-			if recordError == io.EOF {
+		row, err := r.Read()
+		if err != nil {
+			if err == io.EOF {
 				break
 			}
-			return nil, recordError
+			return nil, err
 		}
-		if campColumnIndex < len(csvRecord) {
-			trimmedName := strings.TrimSpace(csvRecord[campColumnIndex])
-			if trimmedName != "" {
-				campNames = append(campNames, trimmedName)
+		if idx < len(row) {
+			if v := strings.TrimSpace(row[idx]); v != "" {
+				names = append(names, v)
 			}
 		}
 	}
-	return campNames, nil
+	return names, nil
 }
 
-func scrapePage(parentContext context.Context, pageURL string) ([]Session, error) {
-	scrapeContext, cancelScrape := context.WithTimeout(parentContext, scrapeTimeout)
-	defer cancelScrape()
+func mustParse(layout, value string) time.Time {
+	t, err := time.Parse(layout, value)
+	if err != nil {
+		panic(value)
+	}
+	return t
+}
 
-	var pageHTML string
-	runError := chromedp.Run(scrapeContext,
+func clockMinutes(raw string) int {
+	s := strings.ToUpper(strings.TrimSpace(raw))
+	if s == "" {
+		return 0
+	}
+	if s == "NOON" {
+		return 12 * 60
+	}
+	layouts := []string{"3:04 PM", "3PM", "3 PM", "15:04", "15"}
+	for _, l := range layouts {
+		if t, err := time.Parse(l, s); err == nil {
+			return t.Hour()*60 + t.Minute()
+		}
+	}
+	panic(raw)
+}
+
+func expandDays(token string) []string {
+	var out []string
+	for _, seg := range strings.Split(token, ",") {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		if strings.Contains(seg, "-") {
+			parts := strings.Split(seg, "-")
+			a := strings.TrimSpace(parts[0])
+			b := strings.TrimSpace(parts[1])
+			si, ok1 := weekdayIndex[a]
+			ei, ok2 := weekdayIndex[b]
+			if !ok1 || !ok2 {
+				continue
+			}
+			for i := 0; ; i++ {
+				idx := (si + i) % 7
+				for k, v := range weekdayIndex {
+					if v == idx {
+						out = append(out, k)
+						break
+					}
+				}
+				if idx == ei {
+					break
+				}
+			}
+		} else {
+			out = append(out, seg)
+		}
+	}
+	return out
+}
+
+func parseDateRange(r string) (time.Time, time.Time) {
+	if strings.Contains(r, "to") {
+		parts := strings.Split(r, "to")
+		return mustParse("January 2, 2006", strings.TrimSpace(parts[0])), mustParse("January 2, 2006", strings.TrimSpace(parts[1]))
+	}
+	t := mustParse("January 2, 2006", strings.TrimSpace(r))
+	return t, t
+}
+
+func splitTimeRange(inp string) (int, int, []string) {
+	pos := strings.Index(inp, " ")
+	if pos == -1 {
+		return 0, 0, nil
+	}
+	dayTok := strings.TrimSpace(inp[:pos])
+	timeSeg := strings.TrimSpace(inp[pos+1:])
+	parts := strings.Split(timeSeg, "-")
+	if len(parts) != 2 {
+		return 0, 0, nil
+	}
+	a := strings.TrimSpace(parts[0])
+	b := strings.TrimSpace(parts[1])
+	hasMer := func(s string) bool {
+		u := strings.ToUpper(s)
+		return strings.Contains(u, "AM") || strings.Contains(u, "PM") || u == "NOON"
+	}
+	switch {
+	case hasMer(a) && !hasMer(b):
+		if strings.EqualFold(a, "Noon") {
+			b += " PM"
+		} else if strings.Contains(strings.ToUpper(a), "AM") {
+			b += " AM"
+		} else {
+			b += " PM"
+		}
+	case !hasMer(a) && hasMer(b):
+		if strings.EqualFold(b, "Noon") {
+			a += " AM"
+		} else if strings.Contains(strings.ToUpper(b), "AM") {
+			a += " AM"
+		} else {
+			a += " PM"
+		}
+	}
+	start := clockMinutes(a)
+	end := clockMinutes(b)
+	return start, end, expandDays(dayTok)
+}
+
+func scrapePage(parent context.Context, pageURL string) ([]Session, error) {
+	ctx, cancel := context.WithTimeout(parent, scrapeTimeout)
+	defer cancel()
+	var html string
+	err := chromedp.Run(ctx,
 		chromedp.Navigate(pageURL),
 		chromedp.WaitVisible(activityCardSelector, chromedp.ByQuery),
 		chromedp.Sleep(postClickSleepDuration),
-		chromedp.ActionFunc(func(actionContext context.Context) error {
-			clickError := chromedp.Click(subActivitiesSelector, chromedp.BySearch, chromedp.AtLeast(0)).Do(actionContext)
-			if clickError != nil {
-				log.Printf("    Info: no %q link found: %v", subActivitiesLinkText, clickError)
-			}
+		chromedp.ActionFunc(func(a context.Context) error {
+			_ = chromedp.Click(subActivitiesSelector, chromedp.BySearch, chromedp.AtLeast(0)).Do(a)
 			return nil
 		}),
 		chromedp.Sleep(postClickSleepDuration),
-		chromedp.OuterHTML(bodySelector, &pageHTML, chromedp.ByQuery),
+		chromedp.OuterHTML(bodySelector, &html, chromedp.ByQuery),
 	)
-	if runError != nil {
-		return nil, fmt.Errorf("chromedp run error: %w", runError)
+	if err != nil {
+		return nil, err
 	}
-
-	document, parseError := goquery.NewDocumentFromReader(strings.NewReader(pageHTML))
-	if parseError != nil {
-		return nil, fmt.Errorf("parsing HTML: %w", parseError)
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		return nil, err
 	}
-
-	var scrapedSessions []Session
-	document.Find(activityCardSelector).Each(func(itemIndex int, cardSelection *goquery.Selection) {
-		if cardSelection.Find("a").FilterFunction(func(innerIndex int, innerSelection *goquery.Selection) bool {
-			return strings.Contains(innerSelection.Text(), subActivitiesLinkText)
-		}).Length() > 0 {
+	var list []Session
+	doc.Find(activityCardSelector).Each(func(i int, s *goquery.Selection) {
+		if s.Find("a").FilterFunction(func(_ int, q *goquery.Selection) bool { return strings.Contains(q.Text(), subActivitiesLinkText) }).Length() > 0 {
 			return
 		}
-
-		titleText := strings.TrimSpace(cardSelection.Find(titleSelector).Text())
-		dateText := strings.TrimSpace(cardSelection.Find(dateRangeSelector).Text())
-		timeText := strings.TrimSpace(cardSelection.Find(timeRangeSelector).Text())
-		ageText := strings.TrimSpace(cardSelection.Find(ageSelector).Text())
-
-		var minimumAgeValue *int
-		var maximumAgeValue *int
-		if regexMatches := ageRegex.FindStringSubmatch(ageText); len(regexMatches) == 3 {
-			if parsedMinAge, parseMinimumError := strconv.Atoi(regexMatches[1]); parseMinimumError == nil {
-				minimumAgeValue = &parsedMinAge
+		title := strings.TrimSpace(s.Find(titleSelector).Text())
+		dateText := strings.TrimSpace(s.Find(dateRangeSelector).Text())
+		timeText := strings.TrimSpace(s.Find(timeRangeSelector).Text())
+		ageText := strings.TrimSpace(s.Find(ageSelector).Text())
+		var minPtr, maxPtr *int
+		if m := ageRegex.FindStringSubmatch(ageText); len(m) == 3 {
+			if v, err := strconv.Atoi(m[1]); err == nil {
+				minPtr = &v
 			}
-			if parsedMaxAge, parseMaximumError := strconv.Atoi(regexMatches[2]); parseMaximumError == nil {
-				maximumAgeValue = &parsedMaxAge
+			if v, err := strconv.Atoi(m[2]); err == nil {
+				maxPtr = &v
 			}
 		}
-
-		availabilityValue := defaultAvailability
-		if cornerSelection := cardSelection.Find(cornerMarkSelector); cornerSelection.Length() > 0 {
-			availabilityValue = strings.TrimSpace(cornerSelection.Text())
-		} else if alertSelection := cardSelection.Find(alertTextSelector); alertSelection.Length() > 0 {
-			availabilityValue = strings.TrimSpace(alertSelection.Text())
+		availability := defaultAvailability
+		if csel := s.Find(cornerMarkSelector); csel.Length() > 0 {
+			availability = strings.TrimSpace(csel.Text())
+		} else if asel := s.Find(alertTextSelector); asel.Length() > 0 {
+			availability = strings.TrimSpace(asel.Text())
 		}
-
-		scrapedSessions = append(scrapedSessions, Session{
-			Title:        titleText,
-			DateRange:    dateText,
-			DayTime:      timeText,
-			MinAge:       minimumAgeValue,
-			MaxAge:       maximumAgeValue,
-			Availability: availabilityValue,
-			PageURL:      pageURL,
+		ds, de := parseDateRange(dateText)
+		startM, endM, days := splitTimeRange(timeText)
+		list = append(list, Session{
+			Title:         title,
+			StartDateUnix: ds.Unix(),
+			EndDateUnix:   de.Unix(),
+			Days:          days,
+			StartMinutes:  startM,
+			EndMinutes:    endM,
+			MinAge:        minPtr,
+			MaxAge:        maxPtr,
+			Availability:  availability,
+			PageURL:       pageURL,
 		})
 	})
-
-	return scrapedSessions, nil
+	return list, nil
 }

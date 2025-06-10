@@ -1,320 +1,69 @@
+<!-- timeline.html -->
 <!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Camp Timeline - Multi-Person View</title>
+    <title>Camp Schedule Timeline</title>
     <link rel="stylesheet" href="https://unpkg.com/vis-timeline@7.7.0/styles/vis-timeline-graph2d.min.css">
     <script src="https://unpkg.com/vis-timeline@7.7.0/standalone/umd/vis-timeline-graph2d.min.js"></script>
-
     <style>
-        body {
-            font-family: Arial, Helvetica, sans-serif;
-            margin: 0;
-            background: #f8f9fa
-        }
-
-        .header {
-            background: white;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px
-        }
-
-        h2 {
-            margin: 0;
-            color: #333
-        }
-
-        .subtitle {
-            color: #666;
-            margin-top: 5px;
-            font-size: 14px
-        }
-
-        #legend {
-            margin: 0 0 20px;
-            font-size: .9em;
-            display: flex;
-            gap: 20px;
-            align-items: center
-        }
-
-        #legend .swatch {
-            display: inline-block;
-            width: 18px;
-            height: 14px;
-            border: 1px solid #666;
-            vertical-align: middle;
-            margin-right: 6px;
-            border-radius: 2px
-        }
-
-        #legend .all {
-            background: #d1e7dd;
-            border-color: #9ed3c1
-        }
-
-        #legend .morn {
-            background: #ffeeba;
-            border-color: #ffca2c
-        }
-
-        #legend .aft {
-            background: #cfe2ff;
-            border-color: #8cc4ff
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 20px
-        }
-
-        #timeline {
-            height: 75vh;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            background: white;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1)
-        }
-
-        .vis-item.morn {
-            background: #ffeeba;
-            border-color: #ffca2c;
-            border-radius: 4px
-        }
-
-        .vis-item.aft {
-            background: #cfe2ff;
-            border-color: #8cc4ff;
-            border-radius: 4px
-        }
-
-        .vis-item.all {
-            background: #d1e7dd;
-            border-color: #9ed3c1;
-            border-radius: 4px
-        }
-
-        .vis-group-label {
-            font-weight: 600;
-            font-size: 14px
-        }
-
-        .vis-item {
-            font-size: 12px;
-            font-weight: 500
-        }
-
-        .stats {
-            display: flex;
-            gap: 30px;
-            margin-top: 15px;
-            font-size: 13px;
-            color: #666
-        }
-
-        .stat {
-            display: flex;
-            align-items: center;
-            gap: 5px
-        }
-
-        .stat-number {
-            font-weight: 600;
-            color: #333
-        }
-
-        .error {
-            padding: 40px;
-            text-align: center;
-            color: red;
-            font-size: 18px;
-            font-weight: bold;
-            background: #ffe6e6;
-            border: 2px solid red;
-            margin: 20px
-        }
+        body{font-family:Arial,Helvetica,sans-serif;background:#f8f9fa;margin:0}
+        .container{max-width:1200px;margin:0 auto;padding:0 20px}
+        h1{padding:20px 0;margin:0;text-align:center}
+        #timeline{height:80vh;border:1px solid #ddd;border-radius:8px;background:#fff}
     </style>
 </head>
 <body>
-<div class="header">
-    <div class="container">
-        <h2>Summer 2025 Camp Schedule</h2>
-        <div class="subtitle">Interactive timeline showing activities for each person</div>
-
-        <div id="legend">
-            <div><span class="swatch all"></span> All-day</div>
-            <div><span class="swatch morn"></span> Morning</div>
-            <div><span class="swatch aft"></span> Afternoon</div>
-        </div>
-
-        <div class="stats" id="stats"></div>
-    </div>
-</div>
-
 <div class="container">
+    <h1>Summer Camp Schedule</h1>
     <div id="timeline"></div>
 </div>
-
 <script>
-    const toISO = (dateString, timeString) => {
-        if (!dateString) return null;
-        if (!timeString) timeString = '12:00 AM';
-        const dateTime = new Date(`${dateString} ${timeString}`);
-        return isNaN(dateTime) ? null : dateTime.toISOString();
-    };
-
-    const classOfSegment = segmentValue => {
-        if (segmentValue === 'morning') return 'morn';
-        if (segmentValue === 'afternoon') return 'aft';
-        if (segmentValue === 'allday') return 'all';
-        throw new Error(`FATAL: Invalid segment value "${segmentValue}" found in sessions.json. Expected: morning, afternoon, or allday`);
-    };
-
-    const labelOfSegment = segmentValue => {
-        if (segmentValue === 'morning') return 'Morning';
-        if (segmentValue === 'afternoon') return 'Afternoon';
-        if (segmentValue === 'allday') return 'All Day';
-        throw new Error(`FATAL: Invalid segment value "${segmentValue}" found in sessions.json. Expected: morning, afternoon, or allday`);
-    };
-
-    const crashLoudly = errorMessage => {
-        document.getElementById('timeline').innerHTML = `
-            <div class="error">
-                <h3>APPLICATION CRASHED</h3>
-                <p>${errorMessage}</p>
-                <p>Fix your sessions.json file and reload the page.</p>
-            </div>`;
-        console.error('FATAL ERROR:', errorMessage);
-        throw new Error(errorMessage);
-    };
-
-    fetch('sessions.json')
+    fetch('schedule.json')
         .then(response => response.json())
-        .then(sessionData => {
-            try {
-                const allPeopleSet = new Set();
-                sessionData.forEach(session => {
-                    Object.keys(session.interested || {}).forEach(personName => {
-                        allPeopleSet.add(personName);
+        .then(data => {
+            const groupIdentifiers = new Set(['Joint']);
+            Object.keys(data.children || {}).forEach(child => groupIdentifiers.add(child));
+            const groups = Array.from(groupIdentifiers).sort().map(name => ({id:name, content:name}));
+
+            const items = [];
+            let sequenceId = 1;
+            const makeDate = text => new Date(text);
+
+            data.joint.forEach(session => {
+                items.push({
+                    id: sequenceId++,
+                    group: 'Joint',
+                    start: makeDate(session.startDate),
+                    end: makeDate(session.endDate),
+                    content: session.activity,
+                    title: `${session.activity}\n${session.startDate} – ${session.endDate}\n${session.url}`
+                });
+            });
+
+            Object.keys(data.children || {}).forEach(child => {
+                (data.children[child] || []).forEach(session => {
+                    items.push({
+                        id: sequenceId++,
+                        group: child,
+                        start: makeDate(session.startDate),
+                        end: makeDate(session.endDate),
+                        content: session.activity,
+                        title: `${session.activity}\n${session.startDate} – ${session.endDate}\n${session.url}`
                     });
                 });
+            });
 
-                const peopleArray = Array.from(allPeopleSet).sort();
-
-                const groupsArray = peopleArray.map(personName => ({
-                    id: personName,
-                    content: `<strong>${personName}</strong>`,
-                    style: 'background-color: #f8f9fa; border-left: 4px solid #007bff;'
-                }));
-
-                const timelineItems = [];
-                let itemIdentifier = 1;
-
-                sessionData.forEach(session => {
-                    peopleArray.forEach(personName => {
-                        if (session.interested && session.interested[personName]) {
-                            const startDateTimeISO = toISO(session.startDate, session.startTime);
-                            let endDateTimeISO = toISO(session.endDate, session.endTime);
-
-                            if (startDateTimeISO && !endDateTimeISO) {
-                                const temporaryDate = new Date(startDateTimeISO);
-                                temporaryDate.setHours(temporaryDate.getHours() + 3);
-                                endDateTimeISO = temporaryDate.toISOString();
-                            }
-
-                            const tooltipContent = [
-                                `<strong>${session.activity}</strong>`,
-                                `<strong>Person:</strong> ${personName}`,
-                                `<strong>Dates:</strong> ${session.startDate || ''} → ${session.endDate || ''}`,
-                                session.startTime && session.endTime ?
-                                    `<strong>Time:</strong> ${session.startTime} – ${session.endTime}` :
-                                    `<strong>Schedule:</strong> ${session.dayTime || 'TBD'}`,
-                                `<strong>Days:</strong> ${session.days ? session.days.join(', ') : 'TBD'}`,
-                                `<strong>Frequency:</strong> ${session.frequency || 'TBD'}`,
-                                session.pageUrl ? `<a href="${session.pageUrl}" target="_blank">View Details</a>` : ''
-                            ].filter(Boolean).join('<br>');
-
-                            timelineItems.push({
-                                id: itemIdentifier++,
-                                group: personName,
-                                start: startDateTimeISO || session.startDate || session.endDate,
-                                end: endDateTimeISO || undefined,
-                                content: `<div style="padding: 2px 4px;"><strong>${session.activity}</strong><br><small>${labelOfSegment(session.segment)}</small></div>`,
-                                title: tooltipContent,
-                                className: classOfSegment(session.segment),
-                                style: 'border-radius: 4px;'
-                            });
-                        }
-                    });
-                });
-
-                const statisticsElement = document.getElementById('stats');
-                const totalSessionCount = sessionData.length;
-                const totalItemCount = timelineItems.length;
-                const peopleCount = peopleArray.length;
-
-                statisticsElement.innerHTML = `
-                    <div class="stat">
-                        <span class="stat-number">${peopleCount}</span> People
-                    </div>
-                    <div class="stat">
-                        <span class="stat-number">${totalSessionCount}</span> Unique Activities
-                    </div>
-                    <div class="stat">
-                        <span class="stat-number">${totalItemCount}</span> Total Assignments
-                    </div>
-                `;
-
-                const timelineOptions = {
-                    stack: true,
-                    orientation: {axis: 'top'},
-                    zoomKey: 'ctrlKey',
-                    groupOrder: 'id',
-                    margin: {
-                        item: {
-                            horizontal: 2,
-                            vertical: 5
-                        }
-                    },
-                    format: {
-                        minorLabels: {
-                            minute: 'h:mm',
-                            hour: 'h:mm',
-                            weekday: 'ddd D',
-                            day: 'D',
-                            week: 'w',
-                            month: 'MMM'
-                        },
-                        majorLabels: {
-                            minute: 'ddd D MMMM',
-                            hour: 'ddd D MMMM',
-                            weekday: 'MMMM YYYY',
-                            day: 'MMMM YYYY',
-                            week: 'MMMM YYYY',
-                            month: 'YYYY'
-                        }
-                    },
-                    tooltip: {
-                        followMouse: true,
-                        overflowMethod: 'cap'
-                    }
-                };
-
-                new vis.Timeline(
-                    document.getElementById('timeline'),
-                    timelineItems,
-                    groupsArray,
-                    timelineOptions
-                );
-
-            } catch (processingError) {
-                crashLoudly(processingError.message);
-            }
+            new vis.Timeline(
+                document.getElementById('timeline'),
+                items,
+                groups,
+                {stack:true, orientation:{axis:'top'}, zoomKey:'ctrlKey', timeAxis:{scale:'week', step:1}}
+            );
         })
-        .catch(fetchError => {
-            crashLoudly(`Failed to load sessions.json: ${fetchError.message}`);
+        .catch(error => {
+            document.getElementById('timeline').innerHTML =
+                `<p style="color:red;padding:20px">Failed to load schedule.json: ${error.message}</p>`;
         });
 </script>
 </body>
