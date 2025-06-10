@@ -196,7 +196,7 @@
             try {
                 const allPeopleSet = new Set();
                 sessionData.forEach(session => {
-                    Object.keys(session.childAllowed || {}).forEach(personName => {
+                    Object.keys(session.interested || {}).forEach(personName => {
                         allPeopleSet.add(personName);
                     });
                 });
@@ -214,7 +214,7 @@
 
                 sessionData.forEach(session => {
                     peopleArray.forEach(personName => {
-                        if (session.childAllowed && session.childAllowed[personName]) {
+                        if (session.interested && session.interested[personName]) {
                             const startDateTimeISO = toISO(session.startDate, session.startTime);
                             let endDateTimeISO = toISO(session.endDate, session.endTime);
 

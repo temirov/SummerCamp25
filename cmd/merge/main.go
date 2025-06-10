@@ -24,16 +24,16 @@ type Raw struct {
 }
 
 type Session struct {
-	Activity     string          `json:"activity"`
-	StartDate    string          `json:"startDate"`
-	EndDate      string          `json:"endDate"`
-	Days         []string        `json:"days"`
-	StartTime    string          `json:"startTime"`
-	EndTime      string          `json:"endTime"`
-	Segment      string          `json:"segment"`
-	Frequency    string          `json:"frequency"`
-	ChildAllowed map[string]bool `json:"childAllowed"`
-	PageURL      string          `json:"pageUrl"`
+	Activity   string          `json:"activity"`
+	StartDate  string          `json:"startDate"`
+	EndDate    string          `json:"endDate"`
+	Days       []string        `json:"days"`
+	StartTime  string          `json:"startTime"`
+	EndTime    string          `json:"endTime"`
+	Segment    string          `json:"segment"`
+	Frequency  string          `json:"frequency"`
+	Interested map[string]bool `json:"interested"`
+	PageURL    string          `json:"pageUrl"`
 }
 
 var allowed = map[string]map[string]bool{
@@ -251,16 +251,16 @@ func main() {
 			}
 
 			merged = append(merged, Session{
-				Activity:     r.Title,
-				StartDate:    startDate,
-				EndDate:      endDate,
-				Days:         days,
-				StartTime:    stime,
-				EndTime:      etime,
-				Segment:      seg,
-				Frequency:    frequency(days),
-				ChildAllowed: perm,
-				PageURL:      r.PageURL,
+				Activity:   r.Title,
+				StartDate:  startDate,
+				EndDate:    endDate,
+				Days:       days,
+				StartTime:  stime,
+				EndTime:    etime,
+				Segment:    seg,
+				Frequency:  frequency(days),
+				Interested: perm,
+				PageURL:    r.PageURL,
 			})
 		}
 		return nil
