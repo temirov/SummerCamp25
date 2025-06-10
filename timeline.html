@@ -2,98 +2,320 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Camp Timeline</title>
+    <title>Camp Timeline - Multi-Person View</title>
     <link rel="stylesheet" href="https://unpkg.com/vis-timeline@7.7.0/styles/vis-timeline-graph2d.min.css">
     <script src="https://unpkg.com/vis-timeline@7.7.0/standalone/umd/vis-timeline-graph2d.min.js"></script>
 
     <style>
-        body{font-family:Arial,Helvetica,sans-serif;margin:0}
-        h2   {margin:16px 0 0 16px}
-        #legend{margin:6px 16px 0;font-size:.9em}
-        #legend .swatch{
-            display:inline-block;width:18px;height:14px;border:1px solid #666;
-            vertical-align:middle;margin-right:4px
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            margin: 0;
+            background: #f8f9fa
         }
-        #legend .all {background:#d1e7dd;border-color:#9ed3c1}
-        #legend .morn{background:#ffeeba;border-color:#ffca2c}
-        #legend .aft {background:#cfe2ff;border-color:#8cc4ff}
-        #legend .unk {background:#eeeeee;border-color:#cccccc}
-        #timeline{height:90vh;margin:16px;border:1px solid #bbb}
 
-        .vis-item.morn {background:#ffeeba;border-color:#ffca2c}
-        .vis-item.aft  {background:#cfe2ff;border-color:#8cc4ff}
-        .vis-item.all  {background:#d1e7dd;border-color:#9ed3c1}
-        .vis-item.unk  {background:#eeeeee;border-color:#cccccc}
+        .header {
+            background: white;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px
+        }
+
+        h2 {
+            margin: 0;
+            color: #333
+        }
+
+        .subtitle {
+            color: #666;
+            margin-top: 5px;
+            font-size: 14px
+        }
+
+        #legend {
+            margin: 0 0 20px;
+            font-size: .9em;
+            display: flex;
+            gap: 20px;
+            align-items: center
+        }
+
+        #legend .swatch {
+            display: inline-block;
+            width: 18px;
+            height: 14px;
+            border: 1px solid #666;
+            vertical-align: middle;
+            margin-right: 6px;
+            border-radius: 2px
+        }
+
+        #legend .all {
+            background: #d1e7dd;
+            border-color: #9ed3c1
+        }
+
+        #legend .morn {
+            background: #ffeeba;
+            border-color: #ffca2c
+        }
+
+        #legend .aft {
+            background: #cfe2ff;
+            border-color: #8cc4ff
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px
+        }
+
+        #timeline {
+            height: 75vh;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1)
+        }
+
+        .vis-item.morn {
+            background: #ffeeba;
+            border-color: #ffca2c;
+            border-radius: 4px
+        }
+
+        .vis-item.aft {
+            background: #cfe2ff;
+            border-color: #8cc4ff;
+            border-radius: 4px
+        }
+
+        .vis-item.all {
+            background: #d1e7dd;
+            border-color: #9ed3c1;
+            border-radius: 4px
+        }
+
+        .vis-group-label {
+            font-weight: 600;
+            font-size: 14px
+        }
+
+        .vis-item {
+            font-size: 12px;
+            font-weight: 500
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #666
+        }
+
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 5px
+        }
+
+        .stat-number {
+            font-weight: 600;
+            color: #333
+        }
+
+        .error {
+            padding: 40px;
+            text-align: center;
+            color: red;
+            font-size: 18px;
+            font-weight: bold;
+            background: #ffe6e6;
+            border: 2px solid red;
+            margin: 20px
+        }
     </style>
 </head>
 <body>
-<h2>Summer 2025 – all sessions</h2>
+<div class="header">
+    <div class="container">
+        <h2>Summer 2025 Camp Schedule</h2>
+        <div class="subtitle">Interactive timeline showing activities for each person</div>
 
-<div id="legend">
-    <span class="swatch all"></span> all-day&nbsp;&nbsp;
-    <span class="swatch morn"></span> morning&nbsp;&nbsp;
-    <span class="swatch aft"></span> afternoon&nbsp;&nbsp;
-    <span class="swatch unk"></span> unspecified
+        <div id="legend">
+            <div><span class="swatch all"></span> All-day</div>
+            <div><span class="swatch morn"></span> Morning</div>
+            <div><span class="swatch aft"></span> Afternoon</div>
+        </div>
+
+        <div class="stats" id="stats"></div>
+    </div>
 </div>
 
-<div id="timeline"></div>
+<div class="container">
+    <div id="timeline"></div>
+</div>
 
 <script>
-    const toISO=(d,t)=>{
-        if(!d) return null;
-        if(!t) t='12:00 AM';
-        const dt=new Date(`${d} ${t}`);
-        return isNaN(dt)?null:dt.toISOString();
+    const toISO = (dateString, timeString) => {
+        if (!dateString) return null;
+        if (!timeString) timeString = '12:00 AM';
+        const dateTime = new Date(`${dateString} ${timeString}`);
+        return isNaN(dateTime) ? null : dateTime.toISOString();
+    };
+
+    const classOfSegment = segmentValue => {
+        if (segmentValue === 'morning') return 'morn';
+        if (segmentValue === 'afternoon') return 'aft';
+        if (segmentValue === 'allday') return 'all';
+        throw new Error(`FATAL: Invalid segment value "${segmentValue}" found in sessions.json. Expected: morning, afternoon, or allday`);
+    };
+
+    const labelOfSegment = segmentValue => {
+        if (segmentValue === 'morning') return 'Morning';
+        if (segmentValue === 'afternoon') return 'Afternoon';
+        if (segmentValue === 'allday') return 'All Day';
+        throw new Error(`FATAL: Invalid segment value "${segmentValue}" found in sessions.json. Expected: morning, afternoon, or allday`);
+    };
+
+    const crashLoudly = errorMessage => {
+        document.getElementById('timeline').innerHTML = `
+            <div class="error">
+                <h3>APPLICATION CRASHED</h3>
+                <p>${errorMessage}</p>
+                <p>Fix your sessions.json file and reload the page.</p>
+            </div>`;
+        console.error('FATAL ERROR:', errorMessage);
+        throw new Error(errorMessage);
     };
 
     fetch('sessions.json')
-        .then(r=>r.json())
-        .then(data=>{
-            const groups=[];
-            const seen=new Set();
-            data.forEach(s=>{
-                if(!seen.has(s.activity)){
-                    groups.push({id:s.activity,content:s.activity});
-                    seen.add(s.activity);
-                }
-            });
+        .then(response => response.json())
+        .then(sessionData => {
+            try {
+                const allPeopleSet = new Set();
+                sessionData.forEach(session => {
+                    Object.keys(session.childAllowed || {}).forEach(personName => {
+                        allPeopleSet.add(personName);
+                    });
+                });
 
-            const classOf=seg=>({morning:'morn',afternoon:'aft',allday:'all'})[seg]||'unk';
-            const labelOf=seg=>({morning:'mor',afternoon:'after',allday:'allday'})[seg]||'';
+                const peopleArray = Array.from(allPeopleSet).sort();
 
-            const items=data.map((s,i)=>{
-                const startISO=toISO(s.startDate,s.startTime);
-                let   endISO  =toISO(s.endDate  ,s.endTime);
-                if(startISO && !endISO){
-                    const tmp=new Date(startISO);
-                    tmp.setHours(tmp.getHours()+1);
-                    endISO=tmp.toISOString();
-                }
-                const tooltip=[
-                    s.activity,
-                    `${s.startDate||''} → ${s.endDate||''}`,
-                    s.startTime&&s.endTime?`${s.startTime} – ${s.endTime}`:s.dayTime||'',
-                    s.pageUrl?`<a href="${s.pageUrl}" target="_blank">source</a>`:''
-                ].filter(Boolean).join('<br>');
-                return{
-                    id:i+1,
-                    group:s.activity,
-                    start:startISO||s.startDate||s.endDate,
-                    end:endISO||undefined,
-                    content:labelOf(s.segment),
-                    title:tooltip,
-                    className:classOf(s.segment)
+                const groupsArray = peopleArray.map(personName => ({
+                    id: personName,
+                    content: `<strong>${personName}</strong>`,
+                    style: 'background-color: #f8f9fa; border-left: 4px solid #007bff;'
+                }));
+
+                const timelineItems = [];
+                let itemIdentifier = 1;
+
+                sessionData.forEach(session => {
+                    peopleArray.forEach(personName => {
+                        if (session.childAllowed && session.childAllowed[personName]) {
+                            const startDateTimeISO = toISO(session.startDate, session.startTime);
+                            let endDateTimeISO = toISO(session.endDate, session.endTime);
+
+                            if (startDateTimeISO && !endDateTimeISO) {
+                                const temporaryDate = new Date(startDateTimeISO);
+                                temporaryDate.setHours(temporaryDate.getHours() + 3);
+                                endDateTimeISO = temporaryDate.toISOString();
+                            }
+
+                            const tooltipContent = [
+                                `<strong>${session.activity}</strong>`,
+                                `<strong>Person:</strong> ${personName}`,
+                                `<strong>Dates:</strong> ${session.startDate || ''} → ${session.endDate || ''}`,
+                                session.startTime && session.endTime ?
+                                    `<strong>Time:</strong> ${session.startTime} – ${session.endTime}` :
+                                    `<strong>Schedule:</strong> ${session.dayTime || 'TBD'}`,
+                                `<strong>Days:</strong> ${session.days ? session.days.join(', ') : 'TBD'}`,
+                                `<strong>Frequency:</strong> ${session.frequency || 'TBD'}`,
+                                session.pageUrl ? `<a href="${session.pageUrl}" target="_blank">View Details</a>` : ''
+                            ].filter(Boolean).join('<br>');
+
+                            timelineItems.push({
+                                id: itemIdentifier++,
+                                group: personName,
+                                start: startDateTimeISO || session.startDate || session.endDate,
+                                end: endDateTimeISO || undefined,
+                                content: `<div style="padding: 2px 4px;"><strong>${session.activity}</strong><br><small>${labelOfSegment(session.segment)}</small></div>`,
+                                title: tooltipContent,
+                                className: classOfSegment(session.segment),
+                                style: 'border-radius: 4px;'
+                            });
+                        }
+                    });
+                });
+
+                const statisticsElement = document.getElementById('stats');
+                const totalSessionCount = sessionData.length;
+                const totalItemCount = timelineItems.length;
+                const peopleCount = peopleArray.length;
+
+                statisticsElement.innerHTML = `
+                    <div class="stat">
+                        <span class="stat-number">${peopleCount}</span> People
+                    </div>
+                    <div class="stat">
+                        <span class="stat-number">${totalSessionCount}</span> Unique Activities
+                    </div>
+                    <div class="stat">
+                        <span class="stat-number">${totalItemCount}</span> Total Assignments
+                    </div>
+                `;
+
+                const timelineOptions = {
+                    stack: true,
+                    orientation: {axis: 'top'},
+                    zoomKey: 'ctrlKey',
+                    groupOrder: 'id',
+                    margin: {
+                        item: {
+                            horizontal: 2,
+                            vertical: 5
+                        }
+                    },
+                    format: {
+                        minorLabels: {
+                            minute: 'h:mm',
+                            hour: 'h:mm',
+                            weekday: 'ddd D',
+                            day: 'D',
+                            week: 'w',
+                            month: 'MMM'
+                        },
+                        majorLabels: {
+                            minute: 'ddd D MMMM',
+                            hour: 'ddd D MMMM',
+                            weekday: 'MMMM YYYY',
+                            day: 'MMMM YYYY',
+                            week: 'MMMM YYYY',
+                            month: 'YYYY'
+                        }
+                    },
+                    tooltip: {
+                        followMouse: true,
+                        overflowMethod: 'cap'
+                    }
                 };
-            });
 
-            new vis.Timeline(
-                document.getElementById('timeline'),
-                items,
-                groups,
-                {stack:false,orientation:{axis:'top'},zoomKey:'ctrlKey'}
-            );
+                new vis.Timeline(
+                    document.getElementById('timeline'),
+                    timelineItems,
+                    groupsArray,
+                    timelineOptions
+                );
+
+            } catch (processingError) {
+                crashLoudly(processingError.message);
+            }
         })
-        .catch(e=>alert('sessions.json not found: '+e));
+        .catch(fetchError => {
+            crashLoudly(`Failed to load sessions.json: ${fetchError.message}`);
+        });
 </script>
 </body>
 </html>
