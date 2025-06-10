@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Camp Timeline</title>
+    <link rel="stylesheet" href="https://unpkg.com/vis-timeline@7.7.0/styles/vis-timeline-graph2d.min.css">
+    <script src="https://unpkg.com/vis-timeline@7.7.0/standalone/umd/vis-timeline-graph2d.min.js"></script>
+
+    <style>
+        body{font-family:Arial,Helvetica,sans-serif;margin:0}
+        h2   {margin:16px 0 0 16px}
+        #legend{margin:6px 16px 0;font-size:.9em}
+        #legend .swatch{
+            display:inline-block;width:18px;height:14px;border:1px solid #666;
+            vertical-align:middle;margin-right:4px
+        }
+        #legend .all {background:#d1e7dd;border-color:#9ed3c1}
+        #legend .morn{background:#ffeeba;border-color:#ffca2c}
+        #legend .aft {background:#cfe2ff;border-color:#8cc4ff}
+        #legend .unk {background:#eeeeee;border-color:#cccccc}
+        #timeline{height:90vh;margin:16px;border:1px solid #bbb}
+
+        .vis-item.morn {background:#ffeeba;border-color:#ffca2c}
+        .vis-item.aft  {background:#cfe2ff;border-color:#8cc4ff}
+        .vis-item.all  {background:#d1e7dd;border-color:#9ed3c1}
+        .vis-item.unk  {background:#eeeeee;border-color:#cccccc}
+    </style>
+</head>
+<body>
+<h2>Summer 2025 – all sessions</h2>
+
+<div id="legend">
+    <span class="swatch all"></span> all-day&nbsp;&nbsp;
+    <span class="swatch morn"></span> morning&nbsp;&nbsp;
+    <span class="swatch aft"></span> afternoon&nbsp;&nbsp;
+    <span class="swatch unk"></span> unspecified
+</div>
+
+<div id="timeline"></div>
+
+<script>
+    const toISO=(d,t)=>{
+        if(!d) return null;
+        if(!t) t='12:00 AM';
+        const dt=new Date(`${d} ${t}`);
+        return isNaN(dt)?null:dt.toISOString();
+    };
+
+    fetch('sessions.json')
+        .then(r=>r.json())
+        .then(data=>{
+            const groups=[];
+            const seen=new Set();
+            data.forEach(s=>{
+                if(!seen.has(s.activity)){
+                    groups.push({id:s.activity,content:s.activity});
+                    seen.add(s.activity);
+                }
+            });
+
+            const classOf=seg=>({morning:'morn',afternoon:'aft',allday:'all'})[seg]||'unk';
+            const labelOf=seg=>({morning:'mor',afternoon:'after',allday:'allday'})[seg]||'';
+
+            const items=data.map((s,i)=>{
+                const startISO=toISO(s.startDate,s.startTime);
+                let   endISO  =toISO(s.endDate  ,s.endTime);
+                if(startISO && !endISO){
+                    const tmp=new Date(startISO);
+                    tmp.setHours(tmp.getHours()+1);
+                    endISO=tmp.toISOString();
+                }
+                const tooltip=[
+                    s.activity,
+                    `${s.startDate||''} → ${s.endDate||''}`,
+                    s.startTime&&s.endTime?`${s.startTime} – ${s.endTime}`:s.dayTime||'',
+                    s.pageUrl?`<a href="${s.pageUrl}" target="_blank">source</a>`:''
+                ].filter(Boolean).join('<br>');
+                return{
+                    id:i+1,
+                    group:s.activity,
+                    start:startISO||s.startDate||s.endDate,
+                    end:endISO||undefined,
+                    content:labelOf(s.segment),
+                    title:tooltip,
+                    className:classOf(s.segment)
+                };
+            });
+
+            new vis.Timeline(
+                document.getElementById('timeline'),
+                items,
+                groups,
+                {stack:false,orientation:{axis:'top'},zoomKey:'ctrlKey'}
+            );
+        })
+        .catch(e=>alert('sessions.json not found: '+e));
+</script>
+</body>
+</html>
