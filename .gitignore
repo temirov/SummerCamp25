@@ -2,3 +2,4 @@
 *.iml
 sessions.json
 scrapes/
+*.csv

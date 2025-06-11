@@ -1,0 +1,102 @@
+<!-- cmd/web/static/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Summer-Camp Planner</title>
+    <link rel="stylesheet" href="https://unpkg.com/vis-timeline@7.7.0/styles/vis-timeline-graph2d.min.css">
+    <style>
+        body{font-family:sans-serif;margin:0;background:#f8f9fa}
+        #drop{border:2px dashed #6c757d;border-radius:8px;margin:40px auto;padding:40px;text-align:center;max-width:500px;color:#6c757d;cursor:pointer}
+        #progress{text-align:center;font-weight:bold;margin:20px 0}
+        #legend{display:flex;gap:24px;justify-content:center;margin:10px 0}
+        .legend-item{display:flex;align-items:center;gap:6px;font-size:14px}
+        .legend-color{width:14px;height:14px;border-radius:2px}
+        #timeline{height:80vh;margin:20px}
+        .vis-item.morning{background:#fff3cd;border-color:#ffc107;color:#212529}
+        .vis-item.afternoon{background:#cfe2ff;border-color:#0d6efd;color:#212529}
+        .vis-item.allday{background:#d1e7dd;border-color:#198754;color:#212529}
+    </style>
+</head>
+<body>
+<div id="drop">Drop want.csv here or click to choose</div>
+<input id="file" type="file" accept=".csv" style="display:none">
+<div id="progress"></div>
+<div id="legend">
+    <div class="legend-item"><span class="legend-color" style="background:#ffc107"></span>Morning</div>
+    <div class="legend-item"><span class="legend-color" style="background:#0d6efd"></span>Afternoon</div>
+    <div class="legend-item"><span class="legend-color" style="background:#198754"></span>All-day</div>
+</div>
+<div id="timeline"></div>
+
+<script src="https://unpkg.com/vis-timeline@7.7.0/standalone/umd/vis-timeline-graph2d.min.js"></script>
+<script>
+    const drop=document.getElementById('drop');
+    const fileIn=document.getElementById('file');
+    const progress=document.getElementById('progress');
+
+    drop.onclick=()=>fileIn.click();
+    drop.ondragover=e=>{e.preventDefault();drop.style.background='#e9ecef'};
+    drop.ondragleave=()=>drop.style.background='';
+    drop.ondrop=e=>{e.preventDefault();drop.style.background='';upload(e.dataTransfer.files[0])};
+    fileIn.onchange=()=>upload(fileIn.files[0]);
+
+    function setProgress(t){progress.textContent=t}
+
+    function upload(f){
+        const fd=new FormData();fd.append('file',f);
+        fetch('/upload',{method:'POST',body:fd})
+            .then(r=>r.json())
+            .then(({jobID})=>{
+                const es=new EventSource(`/job/${jobID}/events`);
+                es.onmessage=ev=>{
+                    const {stage}=JSON.parse(ev.data);
+                    setProgress(stage);
+                    if(stage==='done'){
+                        es.close();
+                        fetch(`/job/${jobID}/schedule`)
+                            .then(r=>r.json())
+                            .then(draw)
+                            .catch(e=>setProgress(e.message))
+                    }
+                }
+            })
+            .catch(e=>setProgress(e.message));
+        setProgress('verifying')
+    }
+
+    function classify(activity){
+        const u=activity.toUpperCase();
+        if(u.includes('AM'))return'';
+        if(u.includes('PM'))return'';
+        return'allday'
+    }
+
+    function draw(data){
+        setProgress('');
+        const groups=[],items=[],gid={},idFor=n=>gid[n]||(gid[n]=groups.push({id:n,content:n})&&n);
+        let iid=1;
+        const toDate=s=>new Date(s);
+        const fixEnd=(st,en)=>st.toDateString()===en.toDateString()?new Date(en.getTime()+86400000):en;
+
+        data.joint.forEach(s=>{
+            const st=toDate(s.startDate),en=toDate(s.endDate);
+            items.push({id:iid++,group:idFor('Joint'),start:st,end:fixEnd(st,en),content:s.activity,title:s.url,className:classify(s.activity)})
+        });
+        for(const child in data.children){
+            data.children[child].forEach(s=>{
+                const st=toDate(s.startDate),en=toDate(s.endDate);
+                items.push({id:iid++,group:idFor(child),start:st,end:fixEnd(st,en),content:s.activity,title:s.url,className:classify(s.activity)})
+            })
+        }
+
+        new vis.Timeline(document.getElementById('timeline'),items,groups,{
+            stack:true,
+            orientation:{axis:'top'},
+            timeAxis:{scale:'day',step:1},
+            format:{minorLabels:{day:'D'},majorLabels:{day:'MMM D'}}
+        })
+    }
+</script>
+</body>
+</html>
